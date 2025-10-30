@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "ads": [
+    {
+      "label": "Study Tools (Free)",
+      "url": "https://www.khanacademy.org/",
+      "disclosure": "House ad"
+    },
+    {
+      "label": "Learn Python (Free)",
+      "url": "https://docs.python.org/3/tutorial/",
+      "disclosure": "House ad"
+    },
+    {
+      "label": "Budgeting Template (Free)",
+      "url": "https://www.vertex42.com/ExcelTemplates/personal-budget-spreadsheet.html",
+      "disclosure": "House ad"
+    }
+  ]
+}
