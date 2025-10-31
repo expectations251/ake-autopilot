@@ -5,6 +5,12 @@ import requests
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
 
+# Identify the bot properly so Wikipedia doesn’t block the requests (403 fix)
+HEADERS = {
+    "User-Agent": "AutopilotKnowledgeEngine/1.0 (+https://github.com/expectations251/ake-autopilot)",
+    "Accept": "application/json"
+}
+
 ROOT = Path(__file__).resolve().parents[1]
 POSTS_DIR = ROOT / "site" / "posts"
 ADS_FILE = ROOT / "house_ads.json"
@@ -23,9 +29,10 @@ def pick_ad(ads):
 def fetch_wikipedia_featured(date: datetime.date):
     """Use Wikipedia REST API for 'featured content' of the given date (en)."""
     url = f"https://en.wikipedia.org/api/rest_v1/feed/featured/{date.year}/{date.month:02d}/{date.day:02d}"
-    r = requests.get(url, timeout=20)
+    r = requests.get(url, headers=HEADERS, timeout=20)
     r.raise_for_status()
     data = r.json()
+
     # choose one story from tfa (today's featured article) or news list
     title = None
     summary_html = None
@@ -39,17 +46,22 @@ def fetch_wikipedia_featured(date: datetime.date):
         first = data["news"][0]
         title = first.get("story")
         # Make a small html from titles
-        items = [f"<li>{itm.get('titles',{}).get('display','')}</li>" for itm in first.get("links",[])]
+        items = [f"<li>{itm.get('titles', {}).get('display', '')}</li>" for itm in first.get("links", [])]
         summary_html = "<p>In the news:</p><ul>" + "".join(items) + "</ul>"
         source_url = "https://en.wikipedia.org/wiki/Portal:Current_events"
     else:
-        # fallback random
-        r = requests.get("https://en.wikipedia.org/api/rest_v1/page/random/summary", timeout=20)
+        # fallback random article
+        r = requests.get(
+            "https://en.wikipedia.org/api/rest_v1/page/random/summary",
+            headers=HEADERS,
+            timeout=20
+        )
         r.raise_for_status()
         j = r.json()
-        title = j.get("title","Interesting Topic")
+        title = j.get("title", "Interesting Topic")
         summary_html = j.get("extract_html", j.get("extract", ""))
         source_url = j.get("content_urls", {}).get("desktop", {}).get("page")
+
     return title, summary_html, source_url
 
 def build_markdown_post(date, title, html, url, ad=None):
@@ -58,12 +70,12 @@ def build_markdown_post(date, title, html, url, ad=None):
     ad_block = ""
     if ad:
         ad_block = f"\n> **{ad['label']}** — {ad['disclosure']} · {ad['url']}\n"
-    credit = f"\n— Source: Wikipedia (CC‑BY‑SA). Original: {url}\n"
+    credit = f"\n— Source: Wikipedia (CC-BY-SA). Original: {url}\n"
     header = f"# {title}\n\n*Published: {date.isoformat()}*\n\n"
     return header + body_md + "\n" + ad_block + credit + "\n"
 
 def write_post(date, title, content):
-    safe_title = re.sub(r'[^a-z0-9\-]+','-', title.lower()).strip('-')[:60] or "daily-post"
+    safe_title = re.sub(r'[^a-z0-9\-]+', '-', title.lower()).strip('-')[:60] or "daily-post"
     fname = f"{date.isoformat()}-{safe_title}.md"
     path = POSTS_DIR / fname
     with open(path, "w", encoding="utf-8") as f:
@@ -72,12 +84,10 @@ def write_post(date, title, content):
 
 def ensure_repo_size_limits():
     # Prevent committing huge files accidentally
-    # Walk site and validate sizes
     MAX = 100 * 1024 * 1024  # 100MB
     for p in ROOT.rglob("*"):
-        if p.is_file():
-            if p.stat().st_size > MAX:
-                raise RuntimeError(f"File too large for Git: {p} exceeds 100MB.")
+        if p.is_file() and p.stat().st_size > MAX:
+            raise RuntimeError(f"File too large for Git: {p} exceeds 100MB.")
 
 def main(once=False):
     POSTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -86,7 +96,7 @@ def main(once=False):
     today = datetime.date.today()
     try:
         title, summary_html, source_url = fetch_wikipedia_featured(today)
-    except Exception as e:
+    except Exception:
         # retry with yesterday
         y = today - datetime.timedelta(days=1)
         title, summary_html, source_url = fetch_wikipedia_featured(y)
@@ -96,6 +106,4 @@ def main(once=False):
     print(f"Wrote post: {path}")
     return 0
 
-if __name__ == "__main__":
-    once = "--once" in sys.argv
-    sys.exit(main(once=once))
+if __name__ == "
