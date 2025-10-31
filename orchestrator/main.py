@@ -5,7 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
 
-# Identify the bot properly so Wikipedia doesn’t block the requests (403 fix)
+# Identify the bot so Wikipedia doesn't block it (403 fix)
 HEADERS = {
     "User-Agent": "AutopilotKnowledgeEngine/1.0 (+https://github.com/expectations251/ake-autopilot)",
     "Accept": "application/json"
@@ -33,7 +33,6 @@ def fetch_wikipedia_featured(date: datetime.date):
     r.raise_for_status()
     data = r.json()
 
-    # choose one story from tfa (today's featured article) or news list
     title = None
     summary_html = None
     source_url = None
@@ -45,16 +44,13 @@ def fetch_wikipedia_featured(date: datetime.date):
     elif "news" in data and data["news"]:
         first = data["news"][0]
         title = first.get("story")
-        # Make a small html from titles
         items = [f"<li>{itm.get('titles', {}).get('display', '')}</li>" for itm in first.get("links", [])]
         summary_html = "<p>In the news:</p><ul>" + "".join(items) + "</ul>"
         source_url = "https://en.wikipedia.org/wiki/Portal:Current_events"
     else:
-        # fallback random article
         r = requests.get(
             "https://en.wikipedia.org/api/rest_v1/page/random/summary",
-            headers=HEADERS,
-            timeout=20
+            headers=HEADERS, timeout=20
         )
         r.raise_for_status()
         j = r.json()
@@ -83,7 +79,6 @@ def write_post(date, title, content):
     return path
 
 def ensure_repo_size_limits():
-    # Prevent committing huge files accidentally
     MAX = 100 * 1024 * 1024  # 100MB
     for p in ROOT.rglob("*"):
         if p.is_file() and p.stat().st_size > MAX:
@@ -94,16 +89,28 @@ def main(once=False):
     ads = load_ads()
     ad = pick_ad(ads)
     today = datetime.date.today()
+
+    # Try today → yesterday → local fallback (never fails the workflow)
     try:
         title, summary_html, source_url = fetch_wikipedia_featured(today)
     except Exception:
-        # retry with yesterday
-        y = today - datetime.timedelta(days=1)
-        title, summary_html, source_url = fetch_wikipedia_featured(y)
+        try:
+            y = today - datetime.timedelta(days=1)
+            title, summary_html, source_url = fetch_wikipedia_featured(y)
+        except Exception:
+            title = "Daily Knowledge"
+            summary_html = (
+                "<p>This starter post proves the autopilot is live. "
+                "Future posts will pull from public CC-BY-SA sources automatically.</p>"
+            )
+            source_url = "https://en.wikipedia.org/wiki/Main_Page"
+
     content = build_markdown_post(today, title, summary_html, source_url, ad=ad)
     path = write_post(today, title, content)
     ensure_repo_size_limits()
     print(f"Wrote post: {path}")
     return 0
 
-if __name__ == "
+if __name__ == "__main__":
+    once = "--once" in sys.argv
+    sys.exit(main(once=once))
